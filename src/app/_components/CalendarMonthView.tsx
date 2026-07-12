@@ -7,13 +7,14 @@ import {
   getMonthGridDays,
   isToday,
 } from "@/lib/calendarUtils";
+import { expandAllOccurrences, type ScheduledOccurrence } from "@/lib/recurrence";
 import type { ScheduledItem } from "@/lib/types";
 import styles from "./CalendarMonthView.module.css";
 
 interface CalendarMonthViewProps {
   items: ScheduledItem[];
   onSelectDay: (dateKey: string) => void;
-  onSelectItem: (item: ScheduledItem) => void;
+  onSelectOccurrence: (occurrence: ScheduledOccurrence) => void;
 }
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -21,7 +22,7 @@ const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function CalendarMonthView({
   items,
   onSelectDay,
-  onSelectItem,
+  onSelectOccurrence,
 }: CalendarMonthViewProps) {
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date();
@@ -29,11 +30,16 @@ export default function CalendarMonthView({
   });
 
   const days = getMonthGridDays(currentMonth);
-  const itemsByDate = new Map<string, ScheduledItem[]>();
-  for (const item of items) {
-    const existing = itemsByDate.get(item.date) ?? [];
-    existing.push(item);
-    itemsByDate.set(item.date, existing);
+  const occurrences = expandAllOccurrences(
+    items,
+    days[0].dateKey,
+    days[days.length - 1].dateKey
+  );
+  const occurrencesByDate = new Map<string, ScheduledOccurrence[]>();
+  for (const occ of occurrences) {
+    const existing = occurrencesByDate.get(occ.occurrenceDate) ?? [];
+    existing.push(occ);
+    occurrencesByDate.set(occ.occurrenceDate, existing);
   }
 
   const monthLabel = currentMonth.toLocaleDateString([], {
@@ -95,21 +101,24 @@ export default function CalendarMonthView({
           >
             <span className={styles.dayNumber}>{day.date.getDate()}</span>
             <div className={styles.dayItems}>
-              {(itemsByDate.get(day.dateKey) ?? []).map((item) => {
-                const timeFrame = formatTimeFrame(item);
+              {(occurrencesByDate.get(day.dateKey) ?? []).map((occ) => {
+                const timeFrame = formatTimeFrame(occ);
                 return (
                   <span
-                    key={item.id}
+                    key={`${occ.item.id}-${occ.occurrenceDate}`}
                     className={styles.itemPill}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onSelectItem(item);
+                      onSelectOccurrence(occ);
                     }}
                   >
+                    {(occ.isRecurring || occ.isCustomPending) && (
+                      <span className={styles.repeatIcon}>↻</span>
+                    )}
                     {timeFrame && (
                       <span className={styles.itemPillTime}>{timeFrame} </span>
                     )}
-                    {item.title}
+                    {occ.title}
                   </span>
                 );
               })}

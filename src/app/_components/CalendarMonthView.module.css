@@ -112,6 +112,11 @@
   opacity: 0.65;
 }
 
+.repeatIcon {
+  opacity: 0.65;
+  margin-right: 0.125rem;
+}
+
 @media (prefers-color-scheme: dark) {
   .navButton {
     border-color: rgba(255, 255, 255, 0.2);

@@ -7,21 +7,26 @@ import styles from "./ChatPanel.module.css";
 interface ChatPanelProps {
   messages: ChatMessage[];
   onSendMessage: (text: string) => void;
+  isSending?: boolean;
 }
 
-export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
+export default function ChatPanel({
+  messages,
+  onSendMessage,
+  isSending = false,
+}: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+  }, [messages.length, isSending]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = inputValue.trim();
-    if (!trimmed) return;
+    if (!trimmed || isSending) return;
     onSendMessage(trimmed);
     setInputValue("");
   }
@@ -60,6 +65,13 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
             </span>
           </div>
         ))}
+        {isSending && (
+          <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
+            <div className={`${styles.bubble} ${styles.bubbleAssistant}`}>
+              Thinking…
+            </div>
+          </div>
+        )}
       </div>
       <form className={styles.inputForm} onSubmit={handleSubmit}>
         <input
@@ -68,8 +80,13 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           placeholder="Type a message…"
+          disabled={isSending}
         />
-        <button className={styles.sendButton} type="submit" disabled={!inputValue.trim()}>
+        <button
+          className={styles.sendButton}
+          type="submit"
+          disabled={!inputValue.trim() || isSending}
+        >
           Send
         </button>
       </form>

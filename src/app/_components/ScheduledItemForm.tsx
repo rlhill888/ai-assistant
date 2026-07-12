@@ -2,20 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatDateKey } from "@/lib/calendarUtils";
-import type { ScheduledItem } from "@/lib/types";
+import type { RecurrenceFrequency, RecurrenceRule, ScheduledItem } from "@/lib/types";
 import styles from "./ScheduledItemForm.module.css";
 
 interface ScheduledItemFormProps {
   initialItem: ScheduledItem | null;
   defaultDate?: string;
-  onSave: (item: ScheduledItem) => void;
-  onDelete?: () => void;
+  isOccurrenceEdit?: boolean;
+  onSave: (item: ScheduledItem) => Promise<void>;
+  onDelete?: () => Promise<void>;
   onClose: () => void;
 }
+
+type RepeatsOption = RecurrenceFrequency | "none";
+
+const REPEATS_OPTIONS: { value: RepeatsOption; label: string }[] = [
+  { value: "none", label: "Does not repeat" },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Bi-weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+  { value: "custom", label: "Custom…" },
+];
 
 export default function ScheduledItemForm({
   initialItem,
   defaultDate,
+  isOccurrenceEdit = false,
   onSave,
   onDelete,
   onClose,
@@ -30,7 +44,19 @@ export default function ScheduledItemForm({
   const [startTime, setStartTime] = useState(initialItem?.startTime ?? "09:00");
   const [endTime, setEndTime] = useState(initialItem?.endTime ?? "");
   const [notes, setNotes] = useState(initialItem?.notes ?? "");
+  const [repeats, setRepeats] = useState<RepeatsOption>(
+    initialItem?.recurrence?.frequency ?? "none"
+  );
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState(
+    initialItem?.recurrence?.endDate ?? ""
+  );
+  const [customDescription, setCustomDescription] = useState(
+    initialItem?.recurrence?.customDescription ?? ""
+  );
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isSeries = Boolean(initialItem?.recurrence);
 
   useEffect(() => {
     dialogRef.current?.showModal();
@@ -41,7 +67,7 @@ export default function ScheduledItemForm({
     onClose();
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!title.trim()) {
@@ -60,6 +86,27 @@ export default function ScheduledItemForm({
       setError("End time must be after the start time.");
       return;
     }
+    if (!isOccurrenceEdit && repeats !== "none" && recurrenceEndDate && recurrenceEndDate < date) {
+      setError("End date must be on or after the start date.");
+      return;
+    }
+    if (!isOccurrenceEdit && repeats === "custom" && !customDescription.trim()) {
+      setError("Please describe how often this repeats.");
+      return;
+    }
+
+    const recurrence: RecurrenceRule | undefined = isOccurrenceEdit
+      ? initialItem?.recurrence
+      : repeats === "none"
+        ? undefined
+        : {
+            frequency: repeats,
+            endDate: recurrenceEndDate || undefined,
+            customDescription:
+              repeats === "custom" ? customDescription.trim() || undefined : undefined,
+            exceptions: initialItem?.recurrence?.exceptions,
+            overrides: initialItem?.recurrence?.overrides,
+          };
 
     const item: ScheduledItem = {
       id: initialItem?.id ?? crypto.randomUUID(),
@@ -69,19 +116,47 @@ export default function ScheduledItemForm({
       startTime: allDay ? undefined : startTime,
       endTime: allDay ? undefined : endTime || undefined,
       notes: notes.trim() || undefined,
+      recurrence,
     };
 
-    onSave(item);
-    handleClose();
-  }
-
-  function handleDelete() {
-    if (!onDelete) return;
-    if (window.confirm("Delete this item?")) {
-      onDelete();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await onSave(item);
       handleClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save item.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
+
+  async function handleDelete() {
+    if (!onDelete) return;
+    const confirmText = isOccurrenceEdit
+      ? "Delete this occurrence only? Other occurrences won't be affected."
+      : isSeries
+        ? "Delete this entire recurring series?"
+        : "Delete this item?";
+    if (!window.confirm(confirmText)) return;
+
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await onDelete();
+      handleClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete item.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const headerText = isOccurrenceEdit
+    ? "Edit occurrence"
+    : initialItem
+      ? "Edit item"
+      : "New item";
 
   return (
     <dialog
@@ -91,7 +166,7 @@ export default function ScheduledItemForm({
       onCancel={onClose}
     >
       <form className={styles.form} onSubmit={handleSubmit}>
-        <h2>{initialItem ? "Edit item" : "New item"}</h2>
+        <h2>{headerText}</h2>
         {error && <p className={styles.error}>{error}</p>}
         <label>
           Title
@@ -109,8 +184,14 @@ export default function ScheduledItemForm({
             value={date}
             onChange={(e) => setDate(e.target.value)}
             required
+            disabled={isOccurrenceEdit}
           />
         </label>
+        {isOccurrenceEdit && (
+          <p className={styles.hint}>
+            Editing this occurrence only — the date can&apos;t be changed here.
+          </p>
+        )}
         <label className={styles.checkboxLabel}>
           <input
             type="checkbox"
@@ -147,12 +228,51 @@ export default function ScheduledItemForm({
             onChange={(e) => setNotes(e.target.value)}
           />
         </label>
+        {!isOccurrenceEdit && (
+          <>
+            <label>
+              Repeats
+              <select
+                value={repeats}
+                onChange={(e) => setRepeats(e.target.value as RepeatsOption)}
+              >
+                {REPEATS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {repeats !== "none" && (
+              <label>
+                Ends on (optional)
+                <input
+                  type="date"
+                  value={recurrenceEndDate}
+                  onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                />
+              </label>
+            )}
+            {repeats === "custom" && (
+              <label>
+                Describe how often
+                <input
+                  type="text"
+                  value={customDescription}
+                  onChange={(e) => setCustomDescription(e.target.value)}
+                  placeholder="e.g. every other Tuesday"
+                />
+              </label>
+            )}
+          </>
+        )}
         <div className={styles.actions}>
           {onDelete && (
             <button
               type="button"
               className={styles.deleteButton}
               onClick={handleDelete}
+              disabled={isSubmitting}
             >
               Delete
             </button>
@@ -162,11 +282,12 @@ export default function ScheduledItemForm({
               type="button"
               className={styles.cancelButton}
               onClick={handleClose}
+              disabled={isSubmitting}
             >
               Cancel
             </button>
-            <button type="submit" className={styles.saveButton}>
-              Save
+            <button type="submit" className={styles.saveButton} disabled={isSubmitting}>
+              {isSubmitting ? "Saving…" : "Save"}
             </button>
           </div>
         </div>

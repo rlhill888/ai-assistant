@@ -25,6 +25,15 @@ export function addMonths(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
 }
 
+export function addDays(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+}
+
+export function parseDateKey(dateKey: string): Date {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
 export function isToday(dateKey: string): boolean {
   return dateKey === formatDateKey(new Date());
 }

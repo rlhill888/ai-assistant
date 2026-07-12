@@ -1,41 +1,48 @@
 "use client";
 
-import { formatDateKey, formatTimeFrame } from "@/lib/calendarUtils";
+import { addDays, formatDateKey, formatTimeFrame } from "@/lib/calendarUtils";
+import { expandAllOccurrences, type ScheduledOccurrence } from "@/lib/recurrence";
 import type { ScheduledItem } from "@/lib/types";
 import styles from "./CalendarAgendaView.module.css";
 
 interface CalendarAgendaViewProps {
   items: ScheduledItem[];
-  onSelectItem: (item: ScheduledItem) => void;
+  onSelectOccurrence: (occurrence: ScheduledOccurrence) => void;
 }
+
+// Bounds how far ahead we expand recurring items for the "upcoming" list —
+// keeps render cost bounded for indefinite recurrences and covers typical
+// upcoming horizons.
+const AGENDA_WINDOW_DAYS = 90;
 
 export default function CalendarAgendaView({
   items,
-  onSelectItem,
+  onSelectOccurrence,
 }: CalendarAgendaViewProps) {
   const today = formatDateKey(new Date());
+  const rangeEnd = formatDateKey(addDays(new Date(), AGENDA_WINDOW_DAYS - 1));
 
-  const upcoming = items
-    .filter((item) => item.date >= today)
-    .sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return (a.startTime ?? "").localeCompare(b.startTime ?? "");
-    });
+  const upcoming = expandAllOccurrences(items, today, rangeEnd).sort((a, b) => {
+    if (a.occurrenceDate !== b.occurrenceDate) {
+      return a.occurrenceDate.localeCompare(b.occurrenceDate);
+    }
+    return (a.startTime ?? "").localeCompare(b.startTime ?? "");
+  });
 
   if (upcoming.length === 0) {
     return <p className={styles.empty}>No upcoming items.</p>;
   }
 
-  const groups = new Map<string, ScheduledItem[]>();
-  for (const item of upcoming) {
-    const existing = groups.get(item.date) ?? [];
-    existing.push(item);
-    groups.set(item.date, existing);
+  const groups = new Map<string, ScheduledOccurrence[]>();
+  for (const occ of upcoming) {
+    const existing = groups.get(occ.occurrenceDate) ?? [];
+    existing.push(occ);
+    groups.set(occ.occurrenceDate, existing);
   }
 
   return (
     <div>
-      {Array.from(groups.entries()).map(([date, dateItems]) => (
+      {Array.from(groups.entries()).map(([date, dateOccurrences]) => (
         <div key={date} className={styles.group}>
           <div className={styles.groupHeading}>
             {new Date(`${date}T00:00:00`).toLocaleDateString([], {
@@ -44,17 +51,22 @@ export default function CalendarAgendaView({
               day: "numeric",
             })}
           </div>
-          {dateItems.map((item) => (
+          {dateOccurrences.map((occ) => (
             <button
-              key={item.id}
+              key={`${occ.item.id}-${occ.occurrenceDate}`}
               type="button"
               className={styles.itemRow}
-              onClick={() => onSelectItem(item)}
+              onClick={() => onSelectOccurrence(occ)}
             >
               <span className={styles.time}>
-                {item.allDay ? "All day" : formatTimeFrame(item)}
+                {occ.allDay ? "All day" : formatTimeFrame(occ)}
               </span>
-              <span className={styles.title}>{item.title}</span>
+              <span className={styles.title}>
+                {(occ.isRecurring || occ.isCustomPending) && (
+                  <span className={styles.repeatIcon}>↻</span>
+                )}
+                {occ.title}
+              </span>
             </button>
           ))}
         </div>
