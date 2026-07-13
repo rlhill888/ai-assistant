@@ -164,6 +164,7 @@ export async function POST(request: Request) {
       "assistant",
       finalText
     );
+    
 
     const items = itemsMutated ? await listScheduledItems(supabase) : undefined;
     return NextResponse.json({ message: assistantMessage, items }, { status: 200 });
