@@ -29,13 +29,19 @@ interface CalendarPanelProps {
 type FormMode =
   | { kind: "create"; defaultDate?: string }
   | { kind: "edit-plain"; item: ScheduledItem }
-  | { kind: "edit-series"; item: ScheduledItem }
   | {
-      kind: "edit-occurrence";
+      kind: "edit-recurring";
       item: ScheduledItem;
       occurrenceDate: string;
-      synthetic: ScheduledItem;
+      editItem: ScheduledItem;
     };
+
+type ScopePrompt = {
+  action: "save" | "delete";
+  item: ScheduledItem;
+  occurrenceDate: string;
+  formItem?: ScheduledItem;
+};
 
 export default function CalendarPanel({
   items,
@@ -47,57 +53,53 @@ export default function CalendarPanel({
 }: CalendarPanelProps) {
   const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
   const [formMode, setFormMode] = useState<FormMode | null>(null);
-  const [scopePrompt, setScopePrompt] = useState<{
-    occurrence: ScheduledOccurrence;
-  } | null>(null);
+  const [scopePrompt, setScopePrompt] = useState<ScopePrompt | null>(null);
+  const [scopeSubmitting, setScopeSubmitting] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
 
   function handleSelectOccurrence(occurrence: ScheduledOccurrence) {
     if (occurrence.item.recurrence) {
-      setScopePrompt({ occurrence });
+      setFormMode({
+        kind: "edit-recurring",
+        item: occurrence.item,
+        occurrenceDate: occurrence.occurrenceDate,
+        editItem: {
+          id: occurrence.item.id,
+          title: occurrence.title,
+          date: occurrence.item.date,
+          allDay: occurrence.allDay,
+          startTime: occurrence.startTime,
+          endTime: occurrence.endTime,
+          notes: occurrence.notes,
+          recurrence: occurrence.item.recurrence,
+        },
+      });
     } else {
       setFormMode({ kind: "edit-plain", item: occurrence.item });
     }
-  }
-
-  function handleChooseOccurrence() {
-    const { occurrence } = scopePrompt!;
-    setFormMode({
-      kind: "edit-occurrence",
-      item: occurrence.item,
-      occurrenceDate: occurrence.occurrenceDate,
-      synthetic: {
-        id: occurrence.item.id,
-        title: occurrence.title,
-        date: occurrence.occurrenceDate,
-        allDay: occurrence.allDay,
-        startTime: occurrence.startTime,
-        endTime: occurrence.endTime,
-        notes: occurrence.notes,
-        recurrence: occurrence.item.recurrence,
-      },
-    });
-    setScopePrompt(null);
-  }
-
-  function handleChooseSeries() {
-    setFormMode({ kind: "edit-series", item: scopePrompt!.occurrence.item });
-    setScopePrompt(null);
   }
 
   function closeForm() {
     setFormMode(null);
   }
 
+  function closeScopePrompt() {
+    setScopePrompt(null);
+    setScopeError(null);
+  }
+
   async function handleSave(formItem: ScheduledItem) {
-    if (formMode?.kind === "edit-occurrence") {
-      await onUpdateOccurrence(formMode.item.id, formMode.occurrenceDate, {
-        title: formItem.title,
-        allDay: formItem.allDay,
-        startTime: formItem.startTime,
-        endTime: formItem.endTime,
-        notes: formItem.notes,
+    if (formMode?.kind === "edit-recurring") {
+      setScopeError(null);
+      setScopePrompt({
+        action: "save",
+        item: formMode.item,
+        occurrenceDate: formMode.occurrenceDate,
+        formItem,
       });
-    } else if (formMode?.kind === "edit-plain" || formMode?.kind === "edit-series") {
+      return;
+    }
+    if (formMode?.kind === "edit-plain") {
       await onUpdateItem(formItem);
     } else {
       await onCreateItem(formItem);
@@ -105,18 +107,67 @@ export default function CalendarPanel({
   }
 
   async function handleDelete() {
-    if (formMode?.kind === "edit-occurrence") {
-      await onDeleteOccurrence(formMode.item.id, formMode.occurrenceDate);
-    } else if (formMode?.kind === "edit-plain" || formMode?.kind === "edit-series") {
+    if (formMode?.kind === "edit-recurring") {
+      setScopeError(null);
+      setScopePrompt({
+        action: "delete",
+        item: formMode.item,
+        occurrenceDate: formMode.occurrenceDate,
+      });
+      return;
+    }
+    if (formMode?.kind === "edit-plain") {
       await onDeleteItem(formMode.item.id);
+    }
+  }
+
+  async function handleChooseOccurrence() {
+    if (!scopePrompt) return;
+    setScopeSubmitting(true);
+    setScopeError(null);
+    try {
+      if (scopePrompt.action === "save" && scopePrompt.formItem) {
+        await onUpdateOccurrence(scopePrompt.item.id, scopePrompt.occurrenceDate, {
+          title: scopePrompt.formItem.title,
+          allDay: scopePrompt.formItem.allDay,
+          startTime: scopePrompt.formItem.startTime,
+          endTime: scopePrompt.formItem.endTime,
+          notes: scopePrompt.formItem.notes,
+        });
+      } else if (scopePrompt.action === "delete") {
+        await onDeleteOccurrence(scopePrompt.item.id, scopePrompt.occurrenceDate);
+      }
+      setScopePrompt(null);
+    } catch (err) {
+      setScopeError(err instanceof Error ? err.message : "Failed to save changes.");
+    } finally {
+      setScopeSubmitting(false);
+    }
+  }
+
+  async function handleChooseSeries() {
+    if (!scopePrompt) return;
+    setScopeSubmitting(true);
+    setScopeError(null);
+    try {
+      if (scopePrompt.action === "save" && scopePrompt.formItem) {
+        await onUpdateItem(scopePrompt.formItem);
+      } else if (scopePrompt.action === "delete") {
+        await onDeleteItem(scopePrompt.item.id);
+      }
+      setScopePrompt(null);
+    } catch (err) {
+      setScopeError(err instanceof Error ? err.message : "Failed to save changes.");
+    } finally {
+      setScopeSubmitting(false);
     }
   }
 
   const initialItem =
     formMode?.kind === "create"
       ? null
-      : formMode?.kind === "edit-occurrence"
-        ? formMode.synthetic
+      : formMode?.kind === "edit-recurring"
+        ? formMode.editItem
         : (formMode?.item ?? null);
 
   return (
@@ -163,9 +214,16 @@ export default function CalendarPanel({
 
       {scopePrompt && (
         <RecurrenceScopeDialog
+          description={
+            scopePrompt.action === "delete"
+              ? "Delete just this occurrence, or the entire series?"
+              : "Apply your change to just this occurrence, or the entire series?"
+          }
+          error={scopeError}
+          isSubmitting={scopeSubmitting}
           onChooseOccurrence={handleChooseOccurrence}
           onChooseSeries={handleChooseSeries}
-          onClose={() => setScopePrompt(null)}
+          onClose={closeScopePrompt}
         />
       )}
 
@@ -173,7 +231,7 @@ export default function CalendarPanel({
         <ScheduledItemForm
           initialItem={initialItem}
           defaultDate={formMode.kind === "create" ? formMode.defaultDate : undefined}
-          isOccurrenceEdit={formMode.kind === "edit-occurrence"}
+          isRecurringEdit={formMode.kind === "edit-recurring"}
           onSave={handleSave}
           onDelete={formMode.kind !== "create" ? handleDelete : undefined}
           onClose={closeForm}

@@ -42,3 +42,14 @@ export interface ScheduledItem {
   notes?: string;
   recurrence?: RecurrenceRule;
 }
+
+export type ScheduleOccurrenceCrud = "create" | "read" | "update" | "delete";
+
+export interface ScheduleOccurrenceChange {
+  crud: ScheduleOccurrenceCrud;
+  updateMessage: string; // human-readable summary; empty for reads
+}
+
+// Keyed by scheduled item id, or "<itemId>:<occurrenceDate>" for a change
+// scoped to a single occurrence of a recurring item.
+export type ScheduleOccurrenceChanges = Record<string, ScheduleOccurrenceChange>;

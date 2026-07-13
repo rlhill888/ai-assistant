@@ -8,7 +8,7 @@ import styles from "./ScheduledItemForm.module.css";
 interface ScheduledItemFormProps {
   initialItem: ScheduledItem | null;
   defaultDate?: string;
-  isOccurrenceEdit?: boolean;
+  isRecurringEdit?: boolean;
   onSave: (item: ScheduledItem) => Promise<void>;
   onDelete?: () => Promise<void>;
   onClose: () => void;
@@ -29,7 +29,7 @@ const REPEATS_OPTIONS: { value: RepeatsOption; label: string }[] = [
 export default function ScheduledItemForm({
   initialItem,
   defaultDate,
-  isOccurrenceEdit = false,
+  isRecurringEdit = false,
   onSave,
   onDelete,
   onClose,
@@ -86,18 +86,17 @@ export default function ScheduledItemForm({
       setError("End time must be after the start time.");
       return;
     }
-    if (!isOccurrenceEdit && repeats !== "none" && recurrenceEndDate && recurrenceEndDate < date) {
+    if (repeats !== "none" && recurrenceEndDate && recurrenceEndDate < date) {
       setError("End date must be on or after the start date.");
       return;
     }
-    if (!isOccurrenceEdit && repeats === "custom" && !customDescription.trim()) {
+    if (repeats === "custom" && !customDescription.trim()) {
       setError("Please describe how often this repeats.");
       return;
     }
 
-    const recurrence: RecurrenceRule | undefined = isOccurrenceEdit
-      ? initialItem?.recurrence
-      : repeats === "none"
+    const recurrence: RecurrenceRule | undefined =
+      repeats === "none"
         ? undefined
         : {
             frequency: repeats,
@@ -133,8 +132,8 @@ export default function ScheduledItemForm({
 
   async function handleDelete() {
     if (!onDelete) return;
-    const confirmText = isOccurrenceEdit
-      ? "Delete this occurrence only? Other occurrences won't be affected."
+    const confirmText = isRecurringEdit
+      ? "Delete this event? You'll choose whether to remove just this occurrence or the whole series next."
       : isSeries
         ? "Delete this entire recurring series?"
         : "Delete this item?";
@@ -152,11 +151,7 @@ export default function ScheduledItemForm({
     }
   }
 
-  const headerText = isOccurrenceEdit
-    ? "Edit occurrence"
-    : initialItem
-      ? "Edit item"
-      : "New item";
+  const headerText = initialItem ? "Edit item" : "New item";
 
   return (
     <dialog
@@ -168,6 +163,12 @@ export default function ScheduledItemForm({
       <form className={styles.form} onSubmit={handleSubmit}>
         <h2>{headerText}</h2>
         {error && <p className={styles.error}>{error}</p>}
+        {isRecurringEdit && (
+          <p className={styles.hint}>
+            This event repeats. After saving, you&apos;ll choose whether to
+            apply your changes to just this occurrence or the whole series.
+          </p>
+        )}
         <label>
           Title
           <input
@@ -184,14 +185,8 @@ export default function ScheduledItemForm({
             value={date}
             onChange={(e) => setDate(e.target.value)}
             required
-            disabled={isOccurrenceEdit}
           />
         </label>
-        {isOccurrenceEdit && (
-          <p className={styles.hint}>
-            Editing this occurrence only — the date can&apos;t be changed here.
-          </p>
-        )}
         <label className={styles.checkboxLabel}>
           <input
             type="checkbox"
@@ -228,43 +223,39 @@ export default function ScheduledItemForm({
             onChange={(e) => setNotes(e.target.value)}
           />
         </label>
-        {!isOccurrenceEdit && (
-          <>
-            <label>
-              Repeats
-              <select
-                value={repeats}
-                onChange={(e) => setRepeats(e.target.value as RepeatsOption)}
-              >
-                {REPEATS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {repeats !== "none" && (
-              <label>
-                Ends on (optional)
-                <input
-                  type="date"
-                  value={recurrenceEndDate}
-                  onChange={(e) => setRecurrenceEndDate(e.target.value)}
-                />
-              </label>
-            )}
-            {repeats === "custom" && (
-              <label>
-                Describe how often
-                <input
-                  type="text"
-                  value={customDescription}
-                  onChange={(e) => setCustomDescription(e.target.value)}
-                  placeholder="e.g. every other Tuesday"
-                />
-              </label>
-            )}
-          </>
+        <label>
+          Repeats
+          <select
+            value={repeats}
+            onChange={(e) => setRepeats(e.target.value as RepeatsOption)}
+          >
+            {REPEATS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {repeats !== "none" && (
+          <label>
+            Ends on (optional)
+            <input
+              type="date"
+              value={recurrenceEndDate}
+              onChange={(e) => setRecurrenceEndDate(e.target.value)}
+            />
+          </label>
+        )}
+        {repeats === "custom" && (
+          <label>
+            Describe how often
+            <input
+              type="text"
+              value={customDescription}
+              onChange={(e) => setCustomDescription(e.target.value)}
+              placeholder="e.g. every other Tuesday"
+            />
+          </label>
         )}
         <div className={styles.actions}>
           {onDelete && (

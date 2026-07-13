@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ChatPanel from "./_components/ChatPanel";
 import CalendarPanel from "./_components/CalendarPanel";
+import ScheduleUpdateToasts, {
+  type ToastBatch,
+} from "./_components/ScheduleUpdateToasts";
 import type {
   ChatMessage,
   RecurrenceOccurrenceOverride,
   ScheduledItem,
+  ScheduleOccurrenceChanges,
   TabId,
 } from "@/lib/types";
 import styles from "./page.module.css";
+
+const TOAST_DISPLAY_MS = 5000;
 
 async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
   try {
@@ -28,6 +34,26 @@ export default function Home() {
   const [items, setItems] = useState<ScheduledItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [itemsError, setItemsError] = useState<string | null>(null);
+  const [toastBatch, setToastBatch] = useState<ToastBatch | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showScheduleUpdateToasts(scheduleOccurrences: ScheduleOccurrenceChanges) {
+    const entries = Object.entries(scheduleOccurrences)
+      .filter(([, change]) => change.crud !== "read")
+      .map(([key, change]) => ({
+        key,
+        crud: change.crud,
+        message: change.updateMessage,
+      }));
+    if (entries.length === 0) return;
+
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastBatch({ batchId: crypto.randomUUID(), entries });
+    toastTimerRef.current = setTimeout(
+      () => setToastBatch(null),
+      TOAST_DISPLAY_MS + entries.length * 90 + 400
+    );
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -92,9 +118,10 @@ export default function Home() {
       if (!res.ok) {
         throw new Error(await extractErrorMessage(res, "Failed to send message"));
       }
-      const { message, items } = await res.json();
+      const { message, items, scheduleOccurrences } = await res.json();
       setMessages((prev) => [...prev, message]);
       if (items) setItems(items);
+      if (scheduleOccurrences) showScheduleUpdateToasts(scheduleOccurrences);
     } catch (err) {
       setChatError(err instanceof Error ? err.message : "Failed to send message");
     } finally {
@@ -184,7 +211,7 @@ export default function Home() {
           }`}
           onClick={() => setActiveTab("assistant")}
         >
-          AI Assistant
+          Message AI Assistant
         </button>
       </div>
 
@@ -195,6 +222,7 @@ export default function Home() {
           onSendMessage={handleSendMessage}
           isSending={chatSending}
         />
+        <ScheduleUpdateToasts batch={toastBatch} />
       </div>
       <div className={styles.panel} hidden={activeTab !== "calendar"}>
         {itemsLoading && <p>Loading…</p>}

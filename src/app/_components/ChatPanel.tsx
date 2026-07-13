@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/lib/types";
 import styles from "./ChatPanel.module.css";
 
@@ -52,10 +54,16 @@ export default function ChatPanel({
               className={`${styles.bubble} ${
                 message.role === "user"
                   ? styles.bubbleUser
-                  : styles.bubbleAssistant
+                  : `${styles.bubbleAssistant} ${styles.markdown}`
               }`}
             >
-              {message.text}
+              {message.role === "assistant" ? (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.text}
+                </ReactMarkdown>
+              ) : (
+                message.text
+              )}
             </div>
             <span className={styles.timestamp}>
               {new Date(message.timestamp).toLocaleTimeString([], {
@@ -67,8 +75,10 @@ export default function ChatPanel({
         ))}
         {isSending && (
           <div className={`${styles.messageRow} ${styles.messageRowAssistant}`}>
-            <div className={`${styles.bubble} ${styles.bubbleAssistant}`}>
-              Thinking…
+            <div className={`${styles.bubble} ${styles.bubbleAssistant} ${styles.thinkingBubble}`}>
+              <span className={styles.thinkingDot} />
+              <span className={styles.thinkingDot} />
+              <span className={styles.thinkingDot} />
             </div>
           </div>
         )}

@@ -6,6 +6,7 @@ import { listScheduledItems } from "@/lib/supabase/scheduledItems";
 import { getClaudeClient, CLAUDE_MODEL } from "@/lib/claude/client";
 import { tools } from "@/lib/claude/tools";
 import { runTool } from "@/lib/claude/runTool";
+import type { ScheduleOccurrenceChanges } from "@/lib/types";
 
 const MAX_TOOL_ITERATIONS = 800;
 
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
     let anyToolUsed = false;
     let nudged = false;
     let toolChoice: { type: "auto" } | { type: "any" } = { type: "auto" };
+    const scheduleOccurrences: ScheduleOccurrenceChanges = {};
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
       const response = await client.messages.create({
@@ -117,8 +119,14 @@ export async function POST(request: Request) {
         const toolResults = await Promise.all(
           toolUseBlocks.map((block) => runTool(supabase, user.id, block))
         );
+        for (const { changes } of toolResults) {
+          Object.assign(scheduleOccurrences, changes);
+        }
 
-        conversation.push({ role: "user", content: toolResults });
+        conversation.push({
+          role: "user",
+          content: toolResults.map((toolResult) => toolResult.result),
+        });
         continue;
       }
 
@@ -164,10 +172,12 @@ export async function POST(request: Request) {
       "assistant",
       finalText
     );
-    
 
     const items = itemsMutated ? await listScheduledItems(supabase) : undefined;
-    return NextResponse.json({ message: assistantMessage, items }, { status: 200 });
+    return NextResponse.json(
+      { message: assistantMessage, items, scheduleOccurrences },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Error processing chat message:", error);
     return NextResponse.json(
