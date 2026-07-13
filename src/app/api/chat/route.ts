@@ -123,7 +123,8 @@ export async function POST(request: Request) {
 
     const items = itemsMutated ? await listScheduledItems(supabase) : undefined;
     return NextResponse.json({ message: assistantMessage, items }, { status: 200 });
-  } catch {
+  } catch (error) {
+    console.error("Error processing chat message:", error);
     return NextResponse.json(
       { error: "Failed to process message" },
       { status: 500 }
