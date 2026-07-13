@@ -26,11 +26,11 @@ export async function listChatMessages(
   const { data, error } = await supabase
     .from("chat_messages")
     .select(SELECT_COLUMNS)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(limit);
 
   if (error) throw error;
-  return (data as unknown as ChatMessageRow[]).map(rowToMessage);
+  return (data as unknown as ChatMessageRow[]).map(rowToMessage).reverse();
 }
 
 export async function createChatMessage(
