@@ -10,6 +10,7 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith(path)
   );
 
+  
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
